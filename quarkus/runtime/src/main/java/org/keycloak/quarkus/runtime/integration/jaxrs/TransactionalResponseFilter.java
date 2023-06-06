@@ -18,6 +18,7 @@
 package org.keycloak.quarkus.runtime.integration.jaxrs;
 
 import java.io.IOException;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerResponseContext;
@@ -40,6 +41,11 @@ public class TransactionalResponseFilter implements ContainerResponseFilter, Tra
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext)
             throws IOException {
         Object entity = responseContext.getEntity();
+
+        if (entity instanceof Stream) {
+            entity = ((Stream<?>) entity).collect(Collectors.toList());
+            responseContext.setEntity(entity);
+        }
 
         if (shouldDelaySessionClose(entity)) {
             return;
