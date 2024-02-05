@@ -43,6 +43,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.hibernate.Session;
 import org.jboss.logging.Logger;
+import org.keycloak.client.clienttype.ClientTypeManager;
+import org.keycloak.common.Profile;
 import org.keycloak.common.util.Time;
 import org.keycloak.connections.jpa.util.JpaUtils;
 import org.keycloak.migration.MigrationModel;
@@ -289,14 +291,25 @@ public class JpaRealmProvider implements RealmProvider, ClientProvider, ClientSc
     public Map<ClientModel, Set<String>> getAllRedirectUrisOfEnabledClients(RealmModel realm) {
         TypedQuery<Map> query = em.createNamedQuery("getAllRedirectUrisOfEnabledClients", Map.class);
         query.setParameter("realm", realm.getId());
-        return closing(query.getResultStream()
-          .filter(s -> s.get("client") != null))
-          .collect(
-            Collectors.groupingBy(
-              s -> new ClientAdapter(realm, em, session, (ClientEntity) s.get("client")),
-              Collectors.mapping(s -> (String) s.get("redirectUri"), Collectors.toSet())
-            )
-          );
+        if (Profile.isFeatureEnabled(Profile.Feature.CLIENT_TYPES)) {
+            return closing(query.getResultStream()
+                    .filter(s -> s.get("client") != null))
+                    .collect(
+                            Collectors.groupingBy(
+                                    s -> toClientModel(realm, (ClientEntity) s.get("client")),
+                                    Collectors.mapping(s -> (String) s.get("redirectUri"), Collectors.toSet())
+                            )
+                    );
+        } else {
+            return closing(query.getResultStream()
+                    .filter(s -> s.get("client") != null))
+                    .collect(
+                            Collectors.groupingBy(
+                                    s -> new ClientAdapter(realm, em, session, (ClientEntity) s.get("client")),
+                                    Collectors.mapping(s -> (String) s.get("redirectUri"), Collectors.toSet())
+                            )
+                    );
+        }
     }
 
     @Override
@@ -755,6 +768,8 @@ public class JpaRealmProvider implements RealmProvider, ClientProvider, ClientSc
 
     @Override
     public ClientModel addClient(RealmModel realm, String id, String clientId) {
+        ClientModel resource;
+
         if (id == null) {
             id = KeycloakModelUtils.generateId();
         }
@@ -773,7 +788,11 @@ public class JpaRealmProvider implements RealmProvider, ClientProvider, ClientSc
         entity.setRealmId(realm.getId());
         em.persist(entity);
 
-        final ClientModel resource = new ClientAdapter(realm, em, session, entity);
+        if (Profile.isFeatureEnabled(Profile.Feature.CLIENT_TYPES)) {
+            resource = toClientModel(realm, entity);
+        } else {
+            resource = new ClientAdapter(realm, em, session, entity);
+        }
 
         session.getKeycloakSessionFactory().publish((ClientModel.ClientCreationEvent) () -> resource);
         return resource;
@@ -810,9 +829,18 @@ public class JpaRealmProvider implements RealmProvider, ClientProvider, ClientSc
         ClientEntity client = em.find(ClientEntity.class, id);
         // Check if client belongs to this realm
         if (client == null || !realm.getId().equals(client.getRealmId())) return null;
-        ClientAdapter adapter = new ClientAdapter(realm, em, session, client);
-        return adapter;
+        if (Profile.isFeatureEnabled(Profile.Feature.CLIENT_TYPES)) {
+            return toClientModel(realm, client);
+        } else {
+            return new ClientAdapter(realm, em, session, client);
+        }
+    }
 
+    private ClientModel toClientModel(RealmModel realm, ClientEntity client) {
+        ClientAdapter adapter = new ClientAdapter(realm, em, session, client);
+
+        ClientTypeManager mgr = session.getProvider(ClientTypeManager.class);
+        return mgr.augmentClient(adapter);
     }
 
     @Override
