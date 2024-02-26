@@ -59,7 +59,7 @@ public class TypeAwareClientModelDelegate extends ClientModelLazyDelegate {
     protected boolean getBooleanProperty(String propertyName, Supplier<Boolean> clientGetter) {
         // Check if clientType supports the feature. If not, simply return false
         if (!clientType.isApplicable(propertyName)) {
-            return false;
+            throw new ClientTypeException("Property " + propertyName + " is not applicable for client type " + clientType.getName());
         }
 
         //  Check if this is read-only. If yes, then we just directly delegate to return stuff from the clientType rather than from client
@@ -74,14 +74,14 @@ public class TypeAwareClientModelDelegate extends ClientModelLazyDelegate {
     protected void setBooleanProperty(String propertyName, Boolean newValue, Consumer<Boolean> clientSetter) {
         // Check if clientType supports the feature. If not, return directly
         if (!clientType.isApplicable(propertyName)) {
-            return;
+            throw new ClientTypeException("Property " + propertyName + " is not applicable for client type " + clientType.getName());
         }
 
         // Check if this is read-only. If yes and there is an attempt to change some stuff, then throw an exception
         if (clientType.isReadOnly(propertyName)) {
             Boolean oldVal = clientType.getDefaultValue(propertyName, Boolean.class);
             if (!ObjectUtil.isEqualOrBothNull(oldVal, newValue)) {
-                throw new ClientTypeException("Property " + propertyName + " of client " + getClientId() + " is read-only due client type " + clientType.getName());
+                throw new ClientTypeException("Property " + propertyName + " of client " + getClientId() + " is read-only due to client type " + clientType.getName());
             }
         }
 

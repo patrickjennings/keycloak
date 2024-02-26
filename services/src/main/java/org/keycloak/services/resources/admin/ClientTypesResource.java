@@ -23,18 +23,15 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.extensions.Extension;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.NoCache;
-import org.keycloak.http.HttpRequest;
-import org.keycloak.http.HttpResponse;
-import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.representations.idm.ClientTypesRepresentation;
 import org.keycloak.services.ErrorResponse;
@@ -50,33 +47,29 @@ import org.keycloak.services.resources.admin.permissions.AdminPermissionEvaluato
 public class ClientTypesResource {
     protected static final Logger logger = Logger.getLogger(ClientTypesResource.class);
 
-    protected final HttpRequest request;
-
-    protected final HttpResponse response;
-
-    protected final KeycloakSession session;
-
+    protected final ClientTypeManager manager;
     protected final RealmModel realm;
+
     private final AdminPermissionEvaluator auth;
 
-    public ClientTypesResource(KeycloakSession session, AdminPermissionEvaluator auth) {
-        this.session = session;
-        this.realm = session.getContext().getRealm();
+    public ClientTypesResource(ClientTypeManager manager, RealmModel realm, AdminPermissionEvaluator auth) {
+        this.manager = manager;
         this.auth = auth;
-        this.request = session.getContext().getHttpRequest();
-        this.response = session.getContext().getHttpResponse();
+        this.realm = realm;
     }
 
     @GET
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
     @Tag(name = KeycloakOpenAPI.Admin.Tags.REALMS_ADMIN)
-    @Operation()
+    @Operation(summary = "List all client types available in the current realm",
+            description = "This endpoint returns a list of both global and realm level client types and the attributes they set"
+    )
     public ClientTypesRepresentation getClientTypes() {
         auth.realm().requireViewRealm();
 
         try {
-            return session.getProvider(ClientTypeManager.class).getClientTypes(realm);
+            return manager.getClientTypes(realm);
         } catch (ClientTypeException e) {
             logger.error(e.getMessage(), e);
             throw new BadRequestException(ErrorResponse.error(e.getMessage(), Response.Status.BAD_REQUEST));
@@ -86,12 +79,15 @@ public class ClientTypesResource {
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Tag(name = KeycloakOpenAPI.Admin.Tags.REALMS_ADMIN)
-    @Operation()
+    @Operation(summary = "Update a client type",
+            description = "This endpoint allows you to update a realm level client type"
+    )
+    @APIResponse(responseCode = "204", description = "No Content")
     public Response updateClientTypes(final ClientTypesRepresentation clientTypes) {
         auth.realm().requireManageRealm();
 
         try {
-            session.getProvider(ClientTypeManager.class).updateClientTypes(realm, clientTypes);
+            manager.updateClientTypes(realm, clientTypes);
         } catch (ClientTypeException e) {
             logger.error(e.getMessage(), e);
             throw ErrorResponse.error(e.getMessage(), Response.Status.BAD_REQUEST);
